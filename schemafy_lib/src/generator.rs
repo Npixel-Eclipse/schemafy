@@ -39,11 +39,11 @@ impl<'a, 'b> Generator<'a, 'b> {
             PathBuf::from(self.input_file)
         };
 
-        let json = std::fs::read_to_string(&input_file).unwrap_or_else(|err| {
+        let yaml = std::fs::read_to_string(&input_file).unwrap_or_else(|err| {
             panic!("Unable to read `{}`: {}", input_file.to_string_lossy(), err)
         });
 
-        let schema = serde_json::from_str(&json).unwrap_or_else(|err| {
+        let schema = serde_yaml::from_str(&yaml).unwrap_or_else(|err| {
             panic!(
                 "Cannot parse `{}` as JSON: {}",
                 input_file.to_string_lossy(),

@@ -49,6 +49,8 @@
 //! }
 //! ```
 
+mod converter;
+
 /// Generate Rust types from a JSON schema.
 ///
 /// If the `root` parameter is supplied, then a type will be
