@@ -788,7 +788,8 @@ impl<'r> Expander<'r> {
     }
 }
 
-pub fn compile_schemas(input_path: &Path) -> io::Result<()> {
+pub fn compile_schemas(input_path: &str) -> io::Result<()> {
+    let input_path = Path::new(input_path);
 
     // read schema files
     let input_files: Vec<_> = input_path.read_dir()?
