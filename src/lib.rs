@@ -49,7 +49,6 @@
 //! }
 //! ```
 
-mod converter;
 
 /// Generate Rust types from a JSON schema.
 ///
