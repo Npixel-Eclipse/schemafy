@@ -788,23 +788,18 @@ impl<'r> Expander<'r> {
     }
 }
 
-pub fn compile_schemas(input_path: &str) {
-    let input_path = Path::new(input_path);
-    let input_file_name = input_path.file_name().unwrap();
-    let input_file_name = input_file_name.to_str().unwrap();
+pub fn compile_schemas(input_dir: &str) {
+    let input_dir = Path::new(input_dir);
+    let input_parent_dir = input_dir.parent().unwrap().to_str().unwrap();
+    let input_file_name = input_dir.file_name().unwrap().to_str().unwrap();
 
     let first_dot_pos = input_file_name.find('.').unwrap();
-    let input_file_extenstion = &input_file_name[first_dot_pos..];
+    let input_file_suffix = &input_file_name[first_dot_pos..];
 
-    let target_path = input_path.parent().unwrap();
-
-    let current_path = env::current_dir().unwrap();
-    let filtered : Vec<_> = current_path.ancestors()
-        .map(|path| path.join(target_path))
-        .filter(|path| path.exists())
-        .flat_map(|path| path.read_dir().unwrap())
-        .filter_map(|path| path.ok())
-        .filter(|path| path.file_name().to_str().unwrap().contains(input_file_extenstion))
+    let filtered : Vec<_> = walkdir::WalkDir::new("/")
+        .into_iter().filter_map(|e| e.ok())
+        .filter(|e| e.path().to_str().unwrap().ends_with(input_file_suffix))
+        .filter(|e| e.path().to_str().unwrap().contains(input_parent_dir))
         .collect();
 
     let output_path = env::var("OUT_DIR").unwrap();
@@ -812,16 +807,16 @@ pub fn compile_schemas(input_path: &str) {
 
     // generate rust code files
     for entry in filtered {
-            let input_file_name = entry.file_name().into_string().unwrap();
-            let prefix_name: String = input_file_name.split('.').take(1).collect();
-            let output_file_name = output_path.join(format!("{}.rs", &prefix_name));
+        let input_file_name = entry.file_name().to_str().unwrap();
+        let prefix_name = input_file_name.strip_suffix(input_file_suffix).unwrap();
+        let output_file_name = output_path.join(format!("{}.rs", &prefix_name));
 
-            Generator::builder()
-                .with_root_name_str(&prefix_name)
-                .with_input_file(&entry.path())
-                .build()
-                .generate_to_file(&output_file_name)
-                .unwrap();
+        Generator::builder()
+            .with_root_name_str(&prefix_name)
+            .with_input_file(&entry.path())
+            .build()
+            .generate_to_file(&output_file_name)
+            .unwrap();
     }
 }
 

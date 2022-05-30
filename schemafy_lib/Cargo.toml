@@ -21,6 +21,7 @@ serde_derive = "1.0"
 serde_yaml = "0.8.24"
 syn = "1.0"
 uriparse = "0.6"
+walkdir = "2.3.2"
 
 Inflector = "0.11"
 
