@@ -60,6 +60,7 @@ pub mod generator;
 mod schema;
 
 use std::{env, path::Path,  borrow::Cow, convert::TryFrom};
+use std::io::Write;
 
 use inflector::Inflector;
 
@@ -796,28 +797,40 @@ pub fn compile_schemas(input_dir: &str) {
     let first_dot_pos = input_file_name.find('.').unwrap();
     let input_file_suffix = &input_file_name[first_dot_pos..];
 
-    let filtered : Vec<_> = walkdir::WalkDir::new("/")
-        .into_iter().filter_map(|e| e.ok())
-        .filter(|e| e.path().to_str().unwrap().ends_with(input_file_suffix))
-        .filter(|e| e.path().to_str().unwrap().contains(input_parent_dir))
+    let current_path = env::current_dir().unwrap();
+    let filtered : Vec<_> = current_path.ancestors()
+        .map(|path| path.join(input_parent_dir))
+        .filter(|path| path.exists())
+        .flat_map(|path| path.read_dir().unwrap())
+        .filter_map(|path| path.ok())
+        .filter(|path| path.file_name().to_str().unwrap().contains(input_file_suffix))
         .collect();
 
     let output_path = env::var("OUT_DIR").unwrap();
     let output_path = Path::new(&output_path);
+    let output_file_name = output_path.join("resource.rs");
 
-    // generate rust code files
+    if let Some(mut old_file) = std::fs::OpenOptions::new().write(true).open(&output_file_name).ok() {
+        old_file.flush().unwrap();
+    }
+
+    let mut out_string = String::new();
     for entry in filtered {
-        let input_file_name = entry.file_name().to_str().unwrap();
+        let input_file_name = entry.file_name().into_string().unwrap();
         let prefix_name = input_file_name.strip_suffix(input_file_suffix).unwrap();
-        let output_file_name = output_path.join(format!("{}.rs", &prefix_name));
 
         Generator::builder()
             .with_root_name_str(&prefix_name)
             .with_input_file(&entry.path())
             .build()
-            .generate_to_file(&output_file_name)
+            .append_to_string(&mut out_string)
             .unwrap();
     }
+
+    std::fs::write(&output_file_name, &out_string).unwrap();
+    std::process::Command::new("rustfmt")
+        .arg(&output_file_name.as_os_str())
+        .output().unwrap();
 }
 
 #[cfg(test)]

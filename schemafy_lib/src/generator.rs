@@ -64,6 +64,14 @@ impl<'a, 'b> Generator<'a, 'b> {
             .output()?;
         Ok(())
     }
+
+    pub fn append_to_string(&self, output_str: &mut String) -> io::Result<()> {
+        let tokens = self.generate();
+        let out = tokens.to_string();
+
+        output_str.push_str(&out);
+        Ok(())
+    }
 }
 
 #[derive(Debug, PartialEq)]
