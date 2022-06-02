@@ -762,6 +762,7 @@ impl<'r> Expander<'r> {
                 return TokenStream::new();
             }
             return quote! {
+                #[allow(dead_code)]
                 pub type #name = #typ;
             };
         };
