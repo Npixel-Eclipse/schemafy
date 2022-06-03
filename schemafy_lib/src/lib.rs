@@ -616,25 +616,45 @@ impl<'r> Expander<'r> {
             } else {
                 None
             };
+            let mut ret :TokenStream;
             if default {
-                quote! {
+                ret = quote! {
                     #[derive(Clone, PartialEq, Debug, Default, Deserialize, Serialize)]
                     #serde_rename
                     #serde_deny_unknown
                     pub struct #name {
                         #(#fields),*
                     }
-                }
+                };
             } else {
-                quote! {
+                ret = quote! {
                     #[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
                     #serde_rename
                     #serde_deny_unknown
                     pub struct #name {
                         #(#fields),*
                     }
+                };
+            }
+            let mut key = TokenStream::new();
+            if let Some(array) = &schema.required {
+                if let Some(first) = array.first() {
+                    if let Ok(parsed) = first.parse() {
+                        key = parsed;
+                    }
                 }
             }
+            if !key.is_empty() {
+                let token = quote! {
+                    impl Identifier for #name {
+                        fn key(&self) -> i64 {
+                            self.#key
+                        }
+                    }
+                };
+                ret = format!("{}{}",ret,token).parse().unwrap();
+            };
+            ret
         } else if is_enum {
             let mut optional = false;
             let mut repr_i64 = false;
@@ -792,7 +812,7 @@ impl<'r> Expander<'r> {
 
 pub fn compile_schemas(input_dir: &str) {
     let input_dir = Path::new(input_dir);
-    let input_parent_dir = input_dir.parent().unwrap().to_str().unwrap();
+    let input_parent_dir = input_dir.parent().unwrap();
     let input_file_name = input_dir.file_name().unwrap().to_str().unwrap();
 
     let first_dot_pos = input_file_name.find('.').unwrap();
@@ -812,11 +832,17 @@ pub fn compile_schemas(input_dir: &str) {
     let output_path = Path::new(&output_path);
     let output_file_name = output_path.join("resource.rs");
 
-    if let Some(mut old_file) = std::fs::OpenOptions::new().write(true).open(&output_file_name).ok() {
+    if let Ok(mut old_file) = std::fs::OpenOptions::new().write(true).open(&output_file_name) {
         old_file.flush().unwrap();
     }
 
     let mut out_string = String::new();
+    out_string.push_str(&quote! {
+        pub trait Identifier {
+            fn key(&self) -> i64;
+        }
+    }.to_string());
+
     for entry in filtered {
         let input_file_name = entry.file_name().into_string().unwrap();
         let prefix_name = input_file_name.strip_suffix(input_file_suffix).unwrap();
