@@ -1,5 +1,5 @@
 pub type PositiveInteger = i64;
-pub type PositiveIntegerDefault0 = serde_json::Value;
+pub type PositiveIntegerDefault0 = serde_yaml::Value;
 pub type SchemaArray = Vec<Schema>;
 #[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
 #[serde(rename = "simpleTypes")]
@@ -30,10 +30,10 @@ pub struct Schema {
     pub schema: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "additionalItems")]
-    pub additional_items: Option<serde_json::Value>,
+    pub additional_items: Option<serde_yaml::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "additionalProperties")]
-    pub additional_properties: Option<serde_json::Value>,
+    pub additional_properties: Option<serde_yaml::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "allOf")]
     pub all_of: Option<SchemaArray>,
@@ -41,16 +41,16 @@ pub struct Schema {
     #[serde(rename = "anyOf")]
     pub any_of: Option<SchemaArray>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub default: Option<serde_json::Value>,
+    pub default: Option<serde_yaml::Value>,
     #[serde(default)]
     pub definitions: ::std::collections::BTreeMap<String, Schema>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub dependencies: Option<::std::collections::BTreeMap<String, serde_json::Value>>,
+    pub dependencies: Option<::std::collections::BTreeMap<String, serde_yaml::Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "enum")]
-    pub enum_: Option<Vec<serde_json::Value>>,
+    pub enum_: Option<Vec<serde_yaml::Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "enumNames")]
     pub enum_names: Option<StringArray>,

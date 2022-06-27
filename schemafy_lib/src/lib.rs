@@ -64,7 +64,7 @@ use std::io::Write;
 
 use inflector::Inflector;
 
-use serde_json::Value;
+use serde_yaml::Value;
 
 use uriparse::{Fragment, URI};
 
@@ -454,7 +454,7 @@ impl<'r> Expander<'r> {
                     }
                 }
             }
-            "serde_json::Value".into()
+            "serde_yaml::Value".into()
         } else if typ.one_of.as_ref().map_or(false, |a| a.len() >= 2) {
             let schemas = typ.one_of.as_ref().unwrap();
             let (type_name, type_def) = self.expand_one_of(schemas);
@@ -471,13 +471,13 @@ impl<'r> Expander<'r> {
                     default: true,
                 }
             } else {
-                "serde_json::Value".into()
+                "serde_yaml::Value".into()
             }
         } else if typ.type_.len() == 1 {
             match typ.type_[0] {
                 SimpleTypes::String => {
                     if typ.enum_.as_ref().map_or(false, |e| e.is_empty()) {
-                        "serde_json::Value".into()
+                        "serde_yaml::Value".into()
                     } else {
                         "String".into()
                     }
@@ -501,30 +501,30 @@ impl<'r> Expander<'r> {
                 }
                 SimpleTypes::Object => {
                     let prop = match typ.additional_properties {
-                        Some(ref props) if props.is_object() => {
-                            let prop = serde_json::from_value(props.clone()).unwrap();
+                        Some(ref props) if props.is_mapping() => {
+                            let prop = serde_yaml::from_value(props.clone()).unwrap();
                             self.expand_type_(&prop).typ
                         }
-                        _ => "serde_json::Value".into(),
+                        _ => "serde_yaml::Value".into(),
                     };
                     let result = format!("::std::collections::BTreeMap<String, {}>", prop);
                     FieldType {
                         typ: result,
                         attributes: Vec::new(),
-                        default: typ.default == Some(Value::Object(Default::default())),
+                        default: typ.default == Some(Value::Mapping(Default::default())),
                     }
                 }
                 SimpleTypes::Array => {
-                    let item_type = typ.items.get(0).map_or("serde_json::Value".into(), |item| {
+                    let item_type = typ.items.get(0).map_or("serde_yaml::Value".into(), |item| {
                         self.current_type = format!("{}Item", self.current_type);
                         self.expand_type_(item).typ
                     });
                     format!("Vec<{}>", item_type).into()
                 }
-                _ => "serde_json::Value".into(),
+                _ => "serde_yaml::Value".into(),
             }
         } else {
-            "serde_json::Value".into()
+            "serde_yaml::Value".into()
         }
     }
 
@@ -695,7 +695,7 @@ impl<'r> Expander<'r> {
                                 optional = true;
                                 None
                             }
-                            _ => panic!("Expected string,bool or number for enum got `{}`", value),
+                            _ => panic!("Expected string,bool or number for enum got `{}`", value.as_str().unwrap()),
                         }
                     })
                     .collect::<Vec<_>>()
@@ -727,7 +727,7 @@ impl<'r> Expander<'r> {
                             optional = true;
                             None
                         }
-                        _ => panic!("Expected string for enum got `{}`", v),
+                        _ => panic!("Expected string for enum got `{}`", v.as_str().unwrap()),
                     })
                     .collect::<Vec<_>>()
             };
