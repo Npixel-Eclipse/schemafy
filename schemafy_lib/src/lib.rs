@@ -647,25 +647,16 @@ impl<'r> Expander<'r> {
             }
             if !key.is_empty() {
                 let property = schema.properties.index(&key.to_string());
-                let mut identifier = TokenStream::new();
-                if property.type_.contains(&SimpleTypes::String) {
-                    identifier = quote! {
-                        impl Identifier for #name {
-                            fn key(&self) -> String {
-                                self.#key
-                            }
-                        }
-                    };
-                } else if property.type_.contains(&SimpleTypes::Integer) {
-                    identifier = quote! {
+                if property.type_.contains(&SimpleTypes::Integer) {
+                    let identifier = quote! {
                         impl Identifier for #name {
                             fn key(&self) -> i64 {
                                 self.#key
                             }
                         }
                     };
-                };
-                token = format!("{}{}", token, identifier).parse().unwrap();
+                    token = format!("{}{}", token, identifier).parse().unwrap();
+                }
             };
             token
         } else if is_enum {
