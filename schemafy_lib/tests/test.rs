@@ -1,4 +1,9 @@
-use schemafy_lib::Expander;
+use schemafy_lib::{compile_schemas, Expander};
+
+#[test]
+fn test_compile_schema() {
+    compile_schemas("D:/Work/Eclipse/Resource/*.schema.yaml");
+}
 
 #[test]
 fn schema() {

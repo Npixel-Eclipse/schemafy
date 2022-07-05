@@ -6,4 +6,4 @@
 //! $ cargo run --bin generate-tests
 //! ```
 
-mod test_suite;
+// mod test_suite;

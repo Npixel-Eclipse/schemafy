@@ -61,6 +61,7 @@ mod schema;
 
 use std::{env, path::Path,  borrow::Cow, convert::TryFrom};
 use std::io::Write;
+use std::ops::Index;
 
 use inflector::Inflector;
 
@@ -616,9 +617,9 @@ impl<'r> Expander<'r> {
             } else {
                 None
             };
-            let mut ret :TokenStream;
+            let mut token :TokenStream;
             if default {
-                ret = quote! {
+                token = quote! {
                     #[derive(Clone, PartialEq, Debug, Default, Deserialize, Serialize)]
                     #serde_rename
                     #serde_deny_unknown
@@ -627,7 +628,7 @@ impl<'r> Expander<'r> {
                     }
                 };
             } else {
-                ret = quote! {
+                token = quote! {
                     #[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
                     #serde_rename
                     #serde_deny_unknown
@@ -645,16 +646,28 @@ impl<'r> Expander<'r> {
                 }
             }
             if !key.is_empty() {
-                let token = quote! {
-                    impl Identifier for #name {
-                        fn key(&self) -> i64 {
-                            self.#key
+                let property = schema.properties.index(&key.to_string());
+                let mut identifier = TokenStream::new();
+                if property.type_.contains(&SimpleTypes::String) {
+                    identifier = quote! {
+                        impl Identifier for #name {
+                            fn key(&self) -> String {
+                                self.#key
+                            }
                         }
-                    }
+                    };
+                } else if property.type_.contains(&SimpleTypes::Integer) {
+                    identifier = quote! {
+                        impl Identifier for #name {
+                            fn key(&self) -> i64 {
+                                self.#key
+                            }
+                        }
+                    };
                 };
-                ret = format!("{}{}",ret,token).parse().unwrap();
+                token = format!("{}{}", token, identifier).parse().unwrap();
             };
-            ret
+            token
         } else if is_enum {
             let mut optional = false;
             let mut repr_i64 = false;
@@ -819,7 +832,7 @@ pub fn compile_schemas(input_dir: &str) {
     let input_file_suffix = &input_file_name[first_dot_pos..];
 
     let current_path = env::current_dir().unwrap();
-    let filtered : Vec<_> = current_path.ancestors()
+    let filtered: Vec<_> = current_path.ancestors()
         .map(|path| path.join(input_parent_dir))
         .filter(|path| path.exists())
         .take(1)
@@ -828,8 +841,14 @@ pub fn compile_schemas(input_dir: &str) {
         .filter(|path| path.file_name().to_str().unwrap().contains(input_file_suffix))
         .collect();
 
-    let output_path = env::var("OUT_DIR").unwrap();
-    let output_path = Path::new(&output_path);
+    let path_str;
+    let output_path = match env::var("OUT_DIR") {
+        Ok(path) => {
+            path_str = path;
+            Path::new(&path_str)
+        }
+        Err(_) => current_path.as_path(),
+    };
     let output_file_name = output_path.join("resource.rs");
 
     if let Ok(mut old_file) = std::fs::OpenOptions::new().write(true).open(&output_file_name) {
