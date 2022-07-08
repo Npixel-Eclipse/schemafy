@@ -826,9 +826,10 @@ pub fn compile_schemas(input_dir: &str) {
     let filtered: Vec<_> = current_path.ancestors()
         .map(|path| path.join(input_parent_dir))
         .filter(|path| path.exists())
+        .filter_map(|path| path.read_dir().ok())
         .take(1)
-        .flat_map(|path| path.read_dir().unwrap())
-        .filter_map(|path| path.ok())
+        .flatten()
+        .filter_map(|entry| entry.ok())
         .filter(|path| path.file_name().to_str().unwrap().contains(input_file_suffix))
         .collect();
 
