@@ -872,6 +872,57 @@ pub fn compile_schemas(input_dir: &str) {
         .output().unwrap();
 }
 
+pub fn compile(out_dir: &str, input_dir: &str) {
+    let input_dir = Path::new(input_dir);
+    let input_parent_dir = input_dir.parent().unwrap();
+    let input_file_name = input_dir.file_name().unwrap().to_str().unwrap();
+
+    let first_dot_pos = input_file_name.find('.').unwrap();
+    let input_file_suffix = &input_file_name[first_dot_pos..];
+
+    let current_path = env::current_dir().unwrap();
+    let filtered: Vec<_> = current_path.ancestors()
+        .map(|path| path.join(input_parent_dir))
+        .filter(|path| path.exists())
+        .filter_map(|path| path.read_dir().ok())
+        .take(1)
+        .flatten()
+        .filter_map(|entry| entry.ok())
+        .filter(|path| path.file_name().to_str().unwrap().contains(input_file_suffix))
+        .collect();
+
+    let output_path = Path::new(out_dir);
+    let output_file_name = output_path.join("resource.rs");
+
+    if let Ok(mut old_file) = std::fs::OpenOptions::new().write(true).open(&output_file_name) {
+        old_file.flush().unwrap();
+    }
+
+    let mut out_string = String::new();
+    out_string.push_str(&quote! {
+        pub trait Identifier {
+            fn key(&self) -> i64;
+        }
+    }.to_string());
+
+    for entry in filtered {
+        let input_file_name = entry.file_name().into_string().unwrap();
+        let prefix_name = input_file_name.strip_suffix(input_file_suffix).unwrap();
+
+        Generator::builder()
+            .with_root_name_str(&prefix_name)
+            .with_input_file(&entry.path())
+            .build()
+            .append_to_string(&mut out_string)
+            .unwrap();
+    }
+
+    std::fs::write(&output_file_name, &out_string).unwrap();
+    std::process::Command::new("rustfmt")
+        .arg(&output_file_name.as_os_str())
+        .output().unwrap();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
