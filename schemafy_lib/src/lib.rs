@@ -900,6 +900,8 @@ pub fn compile(out_dir: &str, input_dir: &str) {
 
     let mut out_string = String::new();
     out_string.push_str(&quote! {
+        use serde_derive::*;
+
         pub trait Identifier {
             fn key(&self) -> i64;
         }
