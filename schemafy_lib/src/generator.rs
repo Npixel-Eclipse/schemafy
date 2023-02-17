@@ -53,13 +53,6 @@ impl<'a, 'b> Generator<'a, 'b> {
             )
         });
 
-        schema.items.get_mut(0)
-            .map(|e| e.properties.get_mut("property")
-                .map(|e| {
-                    e.additional_properties = None;
-                    e.properties.clear();
-                }));
-
         let mut expander = Expander::new(self.root_name.as_deref(), self.schemafy_path, &schema);
         expander.expand(&schema)
     }

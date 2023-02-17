@@ -65,7 +65,7 @@ use std::ops::Index;
 
 use inflector::Inflector;
 
-use serde_yaml::Value;
+use serde_yaml::{Serializer, Value};
 
 use uriparse::{Fragment, URI};
 
@@ -74,6 +74,7 @@ pub use schema::{Schema, SimpleTypes};
 pub use generator::{Generator, GeneratorBuilder};
 
 use proc_macro2::{Span, TokenStream};
+use serde::Serialize;
 
 fn replace_invalid_identifier_chars(s: &str) -> String {
     s.strip_prefix('$')
@@ -178,9 +179,9 @@ fn field(s: &str) -> TokenStream {
 }
 
 fn merge_option<T, F>(mut result: &mut Option<T>, r: &Option<T>, f: F)
-where
-    F: FnOnce(&mut T, &T),
-    T: Clone,
+    where
+        F: FnOnce(&mut T, &T),
+        T: Clone,
 {
     *result = match (&mut result, r) {
         (&mut &mut Some(ref mut result), &Some(ref r)) => return f(result, r),
@@ -264,51 +265,64 @@ struct FieldExpander<'a, 'r: 'a> {
 impl<'a, 'r> FieldExpander<'a, 'r> {
     fn expand_fields(&mut self, type_name: &str, schema: &Schema) -> Vec<TokenStream> {
         let schema = self.expander.schema(schema);
-        schema
-            .properties
-            .iter()
-            .map(|(field_name, value)| {
-                self.expander.current_field.clone_from(field_name);
-                let key = field(field_name);
-                let required = schema
-                    .required
-                    .iter()
-                    .flat_map(|a| a.iter())
-                    .any(|req| req == field_name);
-                let field_type = self.expander.expand_type(type_name, required, value);
-                if !field_type.typ.starts_with("Option<") {
-                    self.default = false;
-                }
-                let typ = field_type.typ.parse::<TokenStream>().unwrap();
-
-                let default = if field_type.default {
-                    Some(quote! { #[serde(default)] })
-                } else {
-                    None
-                };
-                let attributes = if field_type.attributes.is_empty() {
-                    None
-                } else {
-                    let attributes = field_type
-                        .attributes
+        let mut tokens : Vec<TokenStream> =
+            schema.properties
+                .iter()
+                .map(|(field_name, value)| {
+                    self.expander.current_field.clone_from(field_name);
+                    let required = schema
+                        .required
                         .iter()
-                        .map(|attr| attr.parse::<TokenStream>().unwrap());
-                    Some(quote! {
+                        .flat_map(|a| a.iter())
+                        .any(|req| req == field_name);
+
+                    (field_name, self.expander.expand_type(type_name, required, value), value)
+                })
+                .filter(|(_, field_type, _)| (!field_type.typ.starts_with("Option<") || field_type.has_custom_type))
+                .map(|(field_name, field_type, value)| {
+
+                    let key = field(field_name);
+                    let typ = field_type.typ.parse::<TokenStream>().unwrap();
+
+                    let default = if field_type.default {
+                        Some(quote! { #[serde(default)] })
+                    } else {
+                        None
+                    };
+                    let attributes = if field_type.attributes.is_empty() {
+                        None
+                    } else {
+                        let attributes = field_type
+                            .attributes
+                            .iter()
+                            .map(|attr| attr.parse::<TokenStream>().unwrap());
+                        Some(quote! {
                         #[serde( #(#attributes),* )]
                     })
-                };
-                let comment = value
-                    .description
-                    .as_ref()
-                    .map(|comment| make_doc_comment(comment, LINE_LENGTH - INDENT_LENGTH));
-                quote! {
+                    };
+                    let comment = value
+                        .description
+                        .as_ref()
+                        .map(|comment| make_doc_comment(comment, LINE_LENGTH - INDENT_LENGTH));
+                    quote! {
                     #comment
                     #default
                     #attributes
                     #key : #typ
                 }
-            })
-            .collect()
+                })
+                .collect();
+
+        if tokens.len() < schema.properties.len() {
+            tokens.push(
+                quote! {
+                    #[serde(flatten)]
+                    property: HashMap<String, serde_yaml::Value>,
+                }
+            )
+        }
+
+        tokens
     }
 }
 
@@ -325,17 +339,19 @@ struct FieldType {
     typ: String,
     attributes: Vec<String>,
     default: bool,
+    has_custom_type: bool,
 }
 
 impl<S> From<S> for FieldType
-where
-    S: Into<String>,
+    where
+        S: Into<String>,
 {
     fn from(s: S) -> FieldType {
         FieldType {
             typ: s.into(),
             attributes: Vec::new(),
             default: false,
+            has_custom_type: false,
         }
     }
 }
@@ -422,9 +438,23 @@ impl<'r> Expander<'r> {
             result.typ = format!("Box<{}>", result.typ)
         }
         if !required {
-            if !result.default {
-                result.typ = format!("Option<{}>", result.typ);
+            if let Some(defualt_value) = &typ.default {
+
+                let mut default_attribute_str;
+                match defualt_value {
+                    Value::String(value) => default_attribute_str = format!("\"{}\"", value),
+                    Value::Number(value) => default_attribute_str = value.to_string(),
+                    Value::Bool(value) => default_attribute_str = value.to_string(),
+                    _ => default_attribute_str = "".to_string()
+                }
+
+                result.attributes.push(format!("default={}", default_attribute_str));
+            } else {
+                if !result.default {
+                    result.typ = format!("Option<{}>", result.typ);
+                }
             }
+
             if result.typ.starts_with("Option<") {
                 result
                     .attributes
@@ -444,13 +474,16 @@ impl<'r> Expander<'r> {
             if !array.type_.is_empty() {
                 if let SimpleTypes::Array = array.type_[0] {
                     if simple == self.schema(&array.items[0]) {
+                        let expanded_type = self.expand_type_(&any_of[0]);
+
                         return FieldType {
-                            typ: format!("Vec<{}>", self.expand_type_(&any_of[0]).typ),
+                            typ: format!("Vec<{}>", expanded_type.typ),
                             attributes: vec![format!(
                                 r#"with="{}one_or_many""#,
                                 self.schemafy_path
                             )],
                             default: true,
+                            has_custom_type: expanded_type.has_custom_type
                         };
                     }
                 }
@@ -466,15 +499,21 @@ impl<'r> Expander<'r> {
                 let mut ty = typ.clone();
                 ty.type_.retain(|x| *x != SimpleTypes::Null);
 
+                let expanded_type = self.expand_type_(&ty);
+
                 FieldType {
-                    typ: format!("Option<{}>", self.expand_type_(&ty).typ),
+                    typ: format!("Option<{}>", expanded_type.typ),
                     attributes: vec![],
                     default: true,
+                    has_custom_type: expanded_type.has_custom_type
                 }
             } else {
                 "serde_yaml::Value".into()
             }
         } else if typ.type_.len() == 1 {
+            let mut fields = typ.properties.clone();
+            fields.retain(|property, _ | typ.required.as_ref().map(|e| e.contains(property)).unwrap_or_default());
+
             match typ.type_[0] {
                 SimpleTypes::String => {
                     if typ.enum_.as_ref().map_or(false, |e| e.is_empty()) {
@@ -488,18 +527,21 @@ impl<'r> Expander<'r> {
                 SimpleTypes::Number => "f64".into(),
                 // Handle objects defined inline
                 SimpleTypes::Object
-                    if !typ.properties.is_empty()
-                        || typ.additional_properties == Some(Value::Bool(false)) =>
-                {
-                    let name = format!(
-                        "{}{}",
-                        self.current_type.to_pascal_case(),
-                        self.current_field.to_pascal_case()
-                    );
-                    let tokens = self.expand_schema(&name, typ);
-                    self.types.push((name.clone(), tokens));
-                    name.into()
-                }
+                if !fields.is_empty() =>
+                    {
+                        let name = self.current_type.to_pascal_case();
+                        self.current_type = name.clone();
+
+                        let tokens = self.expand_schema(&name, typ);
+                        self.types.push((name.clone(), tokens));
+
+                        FieldType{
+                            typ: name.into(),
+                            attributes: Vec::new(),
+                            default: false,
+                            has_custom_type: true,
+                        }
+                    }
                 SimpleTypes::Object => {
                     let prop = match typ.additional_properties {
                         Some(ref props) if props.is_mapping() => {
@@ -513,14 +555,21 @@ impl<'r> Expander<'r> {
                         typ: result,
                         attributes: Vec::new(),
                         default: typ.default == Some(Value::Mapping(Default::default())),
+                        has_custom_type: false,
                     }
                 }
                 SimpleTypes::Array => {
                     let item_type = typ.items.get(0).map_or("serde_yaml::Value".into(), |item| {
-                        self.current_type = format!("{}Item", self.current_type);
-                        self.expand_type_(item).typ
+                        self.current_type = format!("{}{}Item", self.current_type, self.current_field);
+                        self.expand_type_(item)
                     });
-                    format!("Vec<{}>", item_type).into()
+
+                    FieldType {
+                        typ: format!("Vec<{}>", item_type.typ).into(),
+                        attributes: Vec::new(),
+                        default: typ.default == Some(Value::Mapping(Default::default())),
+                        has_custom_type: item_type.has_custom_type,
+                    }
                 }
                 _ => "serde_yaml::Value".into(),
             }
@@ -599,8 +648,8 @@ impl<'r> Expander<'r> {
             (fields, field_expander.default)
         };
         let name = syn::Ident::new(&pascal_case_name, Span::call_site());
-        let is_struct =
-            !fields.is_empty() || schema.additional_properties == Some(Value::Bool(false));
+        let is_struct = !fields.is_empty();
+
         let serde_rename = if name == original_name {
             None
         } else {
@@ -610,19 +659,11 @@ impl<'r> Expander<'r> {
         };
         let is_enum = schema.enum_.as_ref().map_or(false, |e| !e.is_empty());
         let type_decl = if is_struct {
-            let serde_deny_unknown = if schema.additional_properties == Some(Value::Bool(false))
-                && schema.pattern_properties.is_empty()
-            {
-                Some(quote! { #[serde(deny_unknown_fields)] })
-            } else {
-                None
-            };
             let mut token :TokenStream;
             if default {
                 token = quote! {
                     #[derive(Clone, PartialEq, Debug, Default, Deserialize, Serialize)]
                     #serde_rename
-                    #serde_deny_unknown
                     pub struct #name {
                         #(#fields),*
                     }
@@ -631,7 +672,6 @@ impl<'r> Expander<'r> {
                 token = quote! {
                     #[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
                     #serde_rename
-                    #serde_deny_unknown
                     pub struct #name {
                         #(#fields),*
                     }
