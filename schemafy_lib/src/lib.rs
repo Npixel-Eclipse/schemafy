@@ -258,7 +258,6 @@ fn make_doc_comment(mut comment: &str, remaining_line: usize) -> TokenStream {
 }
 
 struct FieldExpander<'a, 'r: 'a> {
-    default: bool,
     expander: &'a mut Expander<'r>,
 }
 
@@ -317,7 +316,7 @@ impl<'a, 'r> FieldExpander<'a, 'r> {
             tokens.push(
                 quote! {
                     #[serde(flatten)]
-                    property: HashMap<String, serde_yaml::Value>,
+                    pub property: ::std::collections::HashMap<String, serde_yaml::Value>,
                 }
             )
         }
@@ -333,6 +332,7 @@ pub struct Expander<'r> {
     current_type: String,
     current_field: String,
     types: Vec<(String, TokenStream)>,
+    default_paths: Vec<(String, serde_yaml::Value)>,
 }
 
 struct FieldType {
@@ -369,6 +369,7 @@ impl<'r> Expander<'r> {
             current_field: "".into(),
             current_type: "".into(),
             types: Vec::new(),
+            default_paths: Vec::new(),
         }
     }
 
@@ -433,6 +434,7 @@ impl<'r> Expander<'r> {
     fn expand_type(&mut self, type_name: &str, required: bool, typ: &Schema) -> FieldType {
         let saved_type = self.current_type.clone();
         let mut result = self.expand_type_(typ);
+        let current_type = self.current_type.clone();
         self.current_type = saved_type;
         if type_name.to_pascal_case() == result.typ.to_pascal_case() {
             result.typ = format!("Box<{}>", result.typ)
@@ -440,15 +442,10 @@ impl<'r> Expander<'r> {
         if !required {
             if let Some(defualt_value) = &typ.default {
 
-                let mut default_attribute_str;
-                match defualt_value {
-                    Value::String(value) => default_attribute_str = format!("\"{}\"", value),
-                    Value::Number(value) => default_attribute_str = value.to_string(),
-                    Value::Bool(value) => default_attribute_str = value.to_string(),
-                    _ => default_attribute_str = "".to_string()
-                }
+                let default_path = format!("default_{}{}", current_type, self.current_field).to_snake_case();
+                result.attributes.push(format!("default=\"{}\"", default_path));
+                self.default_paths.push((default_path, defualt_value.clone()));
 
-                result.attributes.push(format!("default={}", default_attribute_str));
             } else {
                 if !result.default {
                     result.typ = format!("Option<{}>", result.typ);
@@ -639,13 +636,12 @@ impl<'r> Expander<'r> {
 
         let pascal_case_name = replace_invalid_identifier_chars(&original_name.to_pascal_case());
         self.current_type.clone_from(&pascal_case_name);
-        let (fields, default) = {
+        let fields = {
             let mut field_expander = FieldExpander {
-                default: true,
                 expander: self,
             };
-            let fields = field_expander.expand_fields(original_name, schema);
-            (fields, field_expander.default)
+
+            field_expander.expand_fields(original_name, schema)
         };
         let name = syn::Ident::new(&pascal_case_name, Span::call_site());
         let is_struct = !fields.is_empty();
@@ -659,45 +655,63 @@ impl<'r> Expander<'r> {
         };
         let is_enum = schema.enum_.as_ref().map_or(false, |e| !e.is_empty());
         let type_decl = if is_struct {
-            let mut token :TokenStream;
-            if default {
-                token = quote! {
-                    #[derive(Clone, PartialEq, Debug, Default, Deserialize, Serialize)]
-                    #serde_rename
-                    pub struct #name {
-                        #(#fields),*
-                    }
-                };
-            } else {
-                token = quote! {
+            let mut token  =
+                quote! {
                     #[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
                     #serde_rename
                     pub struct #name {
                         #(#fields),*
                     }
                 };
-            }
-            let mut key = TokenStream::new();
+
+            let mut option_key = None;
             if let Some(array) = &schema.required {
                 if let Some(first) = array.first() {
-                    if let Ok(parsed) = first.parse() {
-                        key = parsed;
-                    }
+                    option_key = Some(first.clone());
                 }
             }
-            if !key.is_empty() {
-                let property = schema.properties.index(&key.to_string());
+            if let Some(key) = option_key {
+                let property = schema.properties.index(&key);
                 if property.type_.contains(&SimpleTypes::Integer) {
+
+                    let mut key_token = TokenStream::new();
+                    if let Ok(token) = key.to_snake_case().parse() {
+                        key_token = token;
+                    }
+
                     let identifier = quote! {
                         impl Identifier for #name {
                             fn key(&self) -> i64 {
-                                self.#key
+                                self.#key_token
                             }
                         }
                     };
                     token = format!("{}{}", token, identifier).parse().unwrap();
                 }
             };
+
+            for (path, value) in &self.default_paths {
+                let (type_str, value_str) = match value {
+                    Value::String(value) => ("String", format!("\"{}\".to_string()", value)),
+                    Value::Number(value) => ("i64".into(), value.to_string()),
+                    Value::Bool(value) => ("bool", value.to_string()),
+                    _ => panic!("default value has invalid type!")
+                };
+
+                let path_token : TokenStream = path.parse().unwrap();
+                let type_token : TokenStream = type_str.parse().unwrap();
+                let value_token : TokenStream = value_str.parse().unwrap();
+
+                let default_func = quote! {
+                    fn #path_token() -> #type_token {
+                        #value_token
+                    }
+                };
+                token = format!("{}{}", token, default_func).parse().unwrap();
+            }
+
+            self.default_paths.clear();
+
             token
         } else if is_enum {
             let mut optional = false;
