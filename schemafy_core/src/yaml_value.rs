@@ -1,6 +1,8 @@
 use std::ops::{AddAssign, Neg, SubAssign};
 
-use serde::Serialize
+use std::convert::TryFrom;
+
+use serde::Serialize;
 use serde_yaml::Value;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
