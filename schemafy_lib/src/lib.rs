@@ -315,7 +315,7 @@ impl<'a, 'r> FieldExpander<'a, 'r> {
             tokens.push(
                 quote! {
                     #[serde(flatten)]
-                    pub property: ::std::collections::HashMap<String, schemafy_core::YamlValue>,
+                    pub property: ::std::collections::HashMap<String, YamlValue>,
                 }
             )
         }
@@ -484,7 +484,7 @@ impl<'r> Expander<'r> {
                     }
                 }
             }
-            "schemafy_core::YamlValue".into()
+            "YamlValue".into()
         } else if typ.one_of.as_ref().map_or(false, |a| a.len() >= 2) {
             let schemas = typ.one_of.as_ref().unwrap();
             let (type_name, type_def) = self.expand_one_of(schemas);
@@ -504,7 +504,7 @@ impl<'r> Expander<'r> {
                     has_custom_type: expanded_type.has_custom_type
                 }
             } else {
-                "schemafy_core::YamlValue".into()
+                "YamlValue".into()
             }
         } else if typ.type_.len() == 1 {
             let mut fields = typ.properties.clone();
@@ -513,7 +513,7 @@ impl<'r> Expander<'r> {
             match typ.type_[0] {
                 SimpleTypes::String => {
                     if typ.enum_.as_ref().map_or(false, |e| e.is_empty()) {
-                        "schemafy_core::YamlValue".into()
+                        "YamlValue".into()
                     } else {
                         "String".into()
                     }
@@ -540,14 +540,14 @@ impl<'r> Expander<'r> {
                     }
                 SimpleTypes::Object => {
                     FieldType {
-                        typ: "schemafy_core::YamlValue".into(),
+                        typ: "YamlValue".into(),
                         attributes: Vec::new(),
                         default: typ.default == Some(Value::Mapping(Default::default())),
                         has_custom_type: false,
                     }
                 }
                 SimpleTypes::Array => {
-                    let item_type = typ.items.get(0).map_or("schemafy_core::YamlValue".into(), |item| {
+                    let item_type = typ.items.get(0).map_or("YamlValue".into(), |item| {
                         self.current_type = format!("{}{}Item", self.current_type, self.current_field);
                         self.expand_type_(item)
                     });
@@ -559,10 +559,10 @@ impl<'r> Expander<'r> {
                         has_custom_type: item_type.has_custom_type,
                     }
                 }
-                _ => "schemafy_core::YamlValue".into(),
+                _ => "YamlValue".into(),
             }
         } else {
-            "schemafy_core::YamlValue".into()
+            "YamlValue".into()
         }
     }
 
@@ -946,6 +946,7 @@ pub fn compile(out_dir: &str, input_dir: &str) {
     let mut out_string = String::new();
     out_string.push_str(&quote! {
         use serde_derive::*;
+        use schemafy_core::yaml_value::YamlValue;
 
         pub trait Identifier {
             fn key(&self) -> i64;
