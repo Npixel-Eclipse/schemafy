@@ -65,7 +65,7 @@ use std::ops::Index;
 
 use inflector::Inflector;
 
-use serde_yaml::{Serializer, Value};
+use serde_yaml::Value;
 
 use uriparse::{Fragment, URI};
 
@@ -74,7 +74,6 @@ pub use schema::{Schema, SimpleTypes};
 pub use generator::{Generator, GeneratorBuilder};
 
 use proc_macro2::{Span, TokenStream};
-use serde::Serialize;
 
 fn replace_invalid_identifier_chars(s: &str) -> String {
     s.strip_prefix('$')
@@ -316,7 +315,7 @@ impl<'a, 'r> FieldExpander<'a, 'r> {
             tokens.push(
                 quote! {
                     #[serde(flatten)]
-                    pub property: ::std::collections::HashMap<String, serde_yaml::Value>,
+                    pub property: ::std::collections::HashMap<String, schemafy_core::YamlValue>,
                 }
             )
         }
@@ -485,7 +484,7 @@ impl<'r> Expander<'r> {
                     }
                 }
             }
-            "serde_yaml::Value".into()
+            "schemafy_core::YamlValue".into()
         } else if typ.one_of.as_ref().map_or(false, |a| a.len() >= 2) {
             let schemas = typ.one_of.as_ref().unwrap();
             let (type_name, type_def) = self.expand_one_of(schemas);
@@ -505,7 +504,7 @@ impl<'r> Expander<'r> {
                     has_custom_type: expanded_type.has_custom_type
                 }
             } else {
-                "serde_yaml::Value".into()
+                "schemafy_core::YamlValue".into()
             }
         } else if typ.type_.len() == 1 {
             let mut fields = typ.properties.clone();
@@ -514,7 +513,7 @@ impl<'r> Expander<'r> {
             match typ.type_[0] {
                 SimpleTypes::String => {
                     if typ.enum_.as_ref().map_or(false, |e| e.is_empty()) {
-                        "serde_yaml::Value".into()
+                        "schemafy_core::YamlValue".into()
                     } else {
                         "String".into()
                     }
@@ -541,14 +540,14 @@ impl<'r> Expander<'r> {
                     }
                 SimpleTypes::Object => {
                     FieldType {
-                        typ: "serde_yaml::Value".into(),
+                        typ: "schemafy_core::YamlValue".into(),
                         attributes: Vec::new(),
                         default: typ.default == Some(Value::Mapping(Default::default())),
                         has_custom_type: false,
                     }
                 }
                 SimpleTypes::Array => {
-                    let item_type = typ.items.get(0).map_or("serde_yaml::Value".into(), |item| {
+                    let item_type = typ.items.get(0).map_or("schemafy_core::YamlValue".into(), |item| {
                         self.current_type = format!("{}{}Item", self.current_type, self.current_field);
                         self.expand_type_(item)
                     });
@@ -560,10 +559,10 @@ impl<'r> Expander<'r> {
                         has_custom_type: item_type.has_custom_type,
                     }
                 }
-                _ => "serde_yaml::Value".into(),
+                _ => "schemafy_core::YamlValue".into(),
             }
         } else {
-            "serde_yaml::Value".into()
+            "schemafy_core::YamlValue".into()
         }
     }
 
