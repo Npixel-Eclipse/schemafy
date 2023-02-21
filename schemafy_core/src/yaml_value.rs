@@ -4,6 +4,7 @@ use std::convert::TryFrom;
 
 use serde::{Serialize, Deserialize};
 use serde_yaml::Value;
+use num_traits::ToPrimitive;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum YamlValue {
@@ -327,5 +328,26 @@ impl<'a> Deserialize<'a> for YamlValue {
     {
         let value = Value::deserialize(deserializer)?;
         Ok(Self::new(value))
+    }
+}
+
+impl ToPrimitive for YamlValue {
+    fn to_i64(&self) -> Option<i64> {
+        match self {
+            YamlValue::Number(value) => Some(*value),
+            _ => None,
+        }
+    }
+    fn to_u64(&self) -> Option<u64> {
+        match self {
+            YamlValue::Number(value) => Some(*value as u64),
+            _ => None,
+        }
+    }
+    fn to_f64(&self) -> Option<f64> {
+        match self {
+            YamlValue::Number(value) => Some(*value as f64),
+            _ => None,
+        }
     }
 }
