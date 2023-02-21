@@ -540,16 +540,8 @@ impl<'r> Expander<'r> {
                         }
                     }
                 SimpleTypes::Object => {
-                    let prop = match typ.additional_properties {
-                        Some(ref props) if props.is_mapping() => {
-                            let prop = serde_yaml::from_value(props.clone()).unwrap();
-                            self.expand_type_(&prop).typ
-                        }
-                        _ => "serde_yaml::Value".into(),
-                    };
-                    let result = format!("::std::collections::BTreeMap<String, {}>", prop);
                     FieldType {
-                        typ: result,
+                        typ: "serde_yaml::Value".into(),
                         attributes: Vec::new(),
                         default: typ.default == Some(Value::Mapping(Default::default())),
                         has_custom_type: false,
