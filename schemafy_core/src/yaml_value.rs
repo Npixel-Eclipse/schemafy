@@ -2,16 +2,17 @@ use std::ops::{AddAssign, Neg, SubAssign};
 
 use std::convert::TryFrom;
 
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use serde_yaml::Value;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum YamlValue {
     Null,
     Bool(bool),
     Number(i64),
     String(String),
     Sequence(Vec<YamlValue>),
+    Mapping(String),
 }
 
 impl YamlValue {
@@ -37,7 +38,7 @@ impl YamlValue {
                     .map(|value| Self::new(value.clone()))
                     .collect::<Vec<_>>(),
             ),
-            Value::Mapping(value) => Self::String(serde_yaml::to_string(value).unwrap()),
+            Value::Mapping(value) => Self::Mapping(serde_yaml::to_string(value).unwrap()),
         }
     }
 
@@ -135,6 +136,7 @@ impl TryFrom<&YamlValue> for String {
             YamlValue::Number(value) => Ok(value.to_string()),
             YamlValue::String(value) => Ok(value.clone()),
             YamlValue::Bool(value) => Ok(value.to_string()),
+            YamlValue::Mapping(value) => Ok(value.clone()),
             _ => Err(()),
         }
     }
@@ -296,5 +298,34 @@ impl Neg for YamlValue {
             YamlValue::Number(value) => YamlValue::Number(-value),
             _ => panic!("Not allowed yaml value type: {:?}", self),
         }
+    }
+}
+
+impl Serialize for YamlValue {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+    {
+        match self {
+            YamlValue::Null => serializer.serialize_none(),
+            YamlValue::Bool(value) => serializer.serialize_bool(*value),
+            YamlValue::Number(value) => serializer.serialize_i64(*value),
+            YamlValue::String(value) => serializer.serialize_str(value),
+            YamlValue::Sequence(value) => value.serialize(serializer),
+            YamlValue::Mapping(value) => {
+                let value: Value = serde_yaml::from_str(value).unwrap();
+                value.serialize(serializer)
+            }
+        }
+    }
+}
+
+impl<'a> Deserialize<'a> for YamlValue {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'a>,
+    {
+        let value = Value::deserialize(deserializer)?;
+        Ok(Self::new(value))
     }
 }
