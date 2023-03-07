@@ -525,8 +525,14 @@ impl<'r> Expander<'r> {
                 SimpleTypes::Object
                 if !fields.is_empty() =>
                     {
-                        let name = self.current_type.to_pascal_case();
-                        self.current_type = name.clone();
+                        let name;
+                        if self.current_type.strip_suffix(format!("{}Item", self.current_field).as_str()).is_some() {
+
+                            name = self.current_type.to_pascal_case();
+                            self.current_type = name.clone();
+                        } else {
+                            name = format!("{}{}", self.current_type, self.current_field).to_pascal_case();
+                        }
 
                         let tokens = self.expand_schema(&name, typ);
                         self.types.push((name.clone(), tokens));
