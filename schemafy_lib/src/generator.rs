@@ -45,7 +45,7 @@ impl<'a, 'b> Generator<'a, 'b> {
             panic!("Unable to read `{}`: {}", input_file.to_string_lossy(), err)
         });
 
-        let mut schema = serde_yaml::from_str::<Schema>(&yaml).unwrap_or_else(|err| {
+        let schema = serde_yaml::from_str::<Schema>(&yaml).unwrap_or_else(|err| {
             panic!(
                 "Cannot parse `{}` as JSON: {}",
                 input_file.to_string_lossy(),
