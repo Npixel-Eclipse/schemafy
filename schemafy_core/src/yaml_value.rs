@@ -48,6 +48,24 @@ impl YamlValue {
     }
 }
 
+impl ToString for YamlValue {
+    fn to_string(&self) -> String {
+        match self {
+            YamlValue::Null => "null".to_string(),
+            YamlValue::Number(value) => value.to_string(),
+            YamlValue::Bool(value) => value.to_string(),
+            YamlValue::String(value) => value.clone(),
+            YamlValue::Sequence(value) => {
+                value.iter()
+                    .map(|e| e.to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            },
+            YamlValue::Mapping(value) => value.to_string(),
+        }
+    }
+}
+
 impl Default for YamlValue {
     fn default() -> Self {
         Self::Null
