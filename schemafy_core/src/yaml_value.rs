@@ -221,6 +221,34 @@ impl<'a, T, U> TryFrom<&'a YamlValue> for (T, U)
     }
 }
 
+impl<'a, T, U, V> TryFrom<&'a YamlValue> for (T, U, V)
+    where T: TryFrom<&'a YamlValue>,
+          U: TryFrom<&'a YamlValue>,
+          V: TryFrom<&'a YamlValue>,
+{
+    type Error = ();
+
+    fn try_from(value: &'a YamlValue) -> Result<Self, Self::Error> {
+        match value {
+            YamlValue::Sequence(value) => {
+                let mut iter = value.into_iter();
+                let x = T::try_from(
+                    iter.next().unwrap_or_else(|| panic!("Failed to convert value: {:?}", value))
+                ).unwrap_or_else(|_| panic!("Failed to convert value: {:?}", value));
+                let y = U::try_from(
+                    iter.next().unwrap_or_else(|| panic!("Failed to convert value: {:?}", value))
+                ).unwrap_or_else(|_| panic!("Failed to convert value: {:?}", value));
+                let z = V::try_from(
+                    iter.next().unwrap_or_else(|| panic!("Failed to convert value: {:?}", value))
+                ).unwrap_or_else(|_| panic!("Failed to convert value: {:?}", value));
+                Ok((x, y, z))
+            }
+            _ => Err(()),
+        }
+    }
+}
+
+
 impl From<i64> for YamlValue {
     fn from(value: i64) -> Self {
         YamlValue::Number(value)
