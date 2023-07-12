@@ -1,6 +1,6 @@
 [package]
 name = "schemafy_lib"
-version = "0.6.1" # VERSION_TAG
+version = "0.6.2" # VERSION_TAG
 authors = ["Markus Westerlind <marwes91@gmail.com>", "MATILLAT Quentin <qmatillat@gmail.com>"]
 edition = "2018"
 
