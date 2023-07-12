@@ -1,19 +1,22 @@
 use std::ops::{AddAssign, Neg, SubAssign};
 
 use std::convert::TryFrom;
+use std::hash::{Hash, Hasher};
 
 use serde::{Serialize, Deserialize};
 use serde_yaml::Value;
 use num_traits::ToPrimitive;
+use serde_yaml::Number;
+use crate::mapping::Mapping;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub enum YamlValue {
     Null,
     Bool(bool),
     Number(i64),
     String(String),
     Sequence(Vec<YamlValue>),
-    Mapping(String),
+    Mapping(Mapping),
 }
 
 impl YamlValue {
@@ -39,7 +42,7 @@ impl YamlValue {
                     .map(|value| Self::new(value.clone()))
                     .collect::<Vec<_>>(),
             ),
-            Value::Mapping(value) => Self::Mapping(serde_yaml::to_string(value).unwrap()),
+            Value::Mapping(value) => Self::Mapping(Mapping::from(value.clone())),
         }
     }
 
@@ -50,25 +53,40 @@ impl YamlValue {
 
 impl ToString for YamlValue {
     fn to_string(&self) -> String {
-        match self {
-            YamlValue::Null => "null".to_string(),
-            YamlValue::Number(value) => value.to_string(),
-            YamlValue::Bool(value) => value.to_string(),
-            YamlValue::String(value) => value.clone(),
-            YamlValue::Sequence(value) => {
-                value.iter()
-                    .map(|e| e.to_string())
-                    .collect::<Vec<String>>()
-                    .join(", ")
-            },
-            YamlValue::Mapping(value) => value.to_string(),
-        }
+        let serde_value = serde_yaml::Value::from(self);
+
+        serde_yaml::to_string(&serde_value)
+            .unwrap_or_else(|_| panic!("Failed to convert serde_yaml::Value to string"))
     }
 }
 
 impl Default for YamlValue {
     fn default() -> Self {
         Self::Null
+    }
+}
+
+impl From<&YamlValue> for Value {
+
+    fn from(value: &YamlValue) -> Self {
+        match value {
+            YamlValue::Null => Value::Null,
+            YamlValue::Bool(bool) => Value::Bool(*bool),
+            YamlValue::Number(value) => Value::Number(Number::from(value.to_f64().unwrap())),
+            YamlValue::String(value) => Value::String(value.clone()),
+            YamlValue::Sequence(value) => Value::Sequence(
+                value
+                    .iter()
+                    .map(|value| Value::try_from(value).unwrap())
+                    .collect::<Vec<_>>(),
+            ),
+            YamlValue::Mapping(value) => Value::Mapping(
+                value
+                    .iter()
+                    .map(|(key, value)| (Value::from(key), Value::from(value)))
+                    .collect::<serde_yaml::Mapping>(),
+            ),
+        }
     }
 }
 
@@ -151,13 +169,9 @@ impl TryFrom<&YamlValue> for String {
     type Error = ();
 
     fn try_from(value: &YamlValue) -> Result<Self, Self::Error> {
-        match value {
-            YamlValue::Number(value) => Ok(value.to_string()),
-            YamlValue::String(value) => Ok(value.clone()),
-            YamlValue::Bool(value) => Ok(value.to_string()),
-            YamlValue::Mapping(value) => Ok(value.clone()),
-            _ => Err(()),
-        }
+        let value = serde_yaml::Value::from(value);
+
+        serde_yaml::to_string(&value).map_err(|_| ())
     }
 }
 
@@ -383,17 +397,7 @@ impl Serialize for YamlValue {
         where
             S: serde::Serializer,
     {
-        match self {
-            YamlValue::Null => serializer.serialize_none(),
-            YamlValue::Bool(value) => serializer.serialize_bool(*value),
-            YamlValue::Number(value) => serializer.serialize_i64(*value),
-            YamlValue::String(value) => serializer.serialize_str(value),
-            YamlValue::Sequence(value) => value.serialize(serializer),
-            YamlValue::Mapping(value) => {
-                let value: Value = serde_yaml::from_str(value).unwrap();
-                value.serialize(serializer)
-            }
-        }
+        serde_yaml::Value::from(self).serialize(serializer)
     }
 }
 
@@ -424,6 +428,19 @@ impl ToPrimitive for YamlValue {
         match self {
             YamlValue::Number(value) => Some(*value as f64),
             _ => None,
+        }
+    }
+}
+
+impl Hash for YamlValue {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            YamlValue::Null => 0.hash(state),
+            YamlValue::Bool(b) => (1, b).hash(state),
+            YamlValue::Number(i) => (2, i).hash(state),
+            YamlValue::String(s) => (3, s).hash(state),
+            YamlValue::Sequence(seq) => (4, seq).hash(state),
+            YamlValue::Mapping(map) => (5, map).hash(state),
         }
     }
 }

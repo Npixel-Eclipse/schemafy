@@ -1,1 +1,1 @@
-pub mod one_or_many;pub mod yaml_value;
+pub mod one_or_many;pub mod yaml_value;pub mod mapping;
