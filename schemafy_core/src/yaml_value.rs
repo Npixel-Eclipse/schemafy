@@ -79,7 +79,7 @@ impl From<&YamlValue> for Value {
         match value {
             YamlValue::Null => Value::Null,
             YamlValue::Bool(bool) => Value::Bool(*bool),
-            YamlValue::Number(value) => Value::Number(Number::from(value.to_f64().unwrap())),
+            YamlValue::Number(value) => Value::Number(Number::from(value.clone())),
             YamlValue::String(value) => Value::String(value.clone()),
             YamlValue::Sequence(value) => Value::Sequence(
                 value
