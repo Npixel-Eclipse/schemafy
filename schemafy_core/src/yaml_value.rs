@@ -181,7 +181,9 @@ impl TryFrom<&YamlValue> for String {
             YamlValue::String(value) => Ok(value.clone()),
             YamlValue::Bool(value) => Ok(value.to_string()),
             YamlValue::Mapping(_) => {
-                let serde_mapping = Value::from(value);
+                let Value::Mapping(serde_mapping) = Value::from(value) else {
+                    panic!("Failed to convert YamlValue to serde_yaml::Mapping")
+                };
                 Ok(serde_yaml::to_string(&serde_mapping).unwrap())
             }
             _ => Err(()),
