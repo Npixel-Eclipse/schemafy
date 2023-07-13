@@ -53,10 +53,18 @@ impl YamlValue {
 
 impl ToString for YamlValue {
     fn to_string(&self) -> String {
-        let serde_value = serde_yaml::Value::from(self);
-
-        serde_yaml::to_string(&serde_value)
-            .unwrap_or_else(|_| panic!("Failed to convert serde_yaml::Value to string"))
+        match self {
+            YamlValue::Null => "null".to_string(),
+            YamlValue::Sequence(value) => {
+                value.iter()
+                    .map(|e| e.to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            }
+            value @ _ => value.parse().unwrap_or_else(||
+                panic!("Failed to parse string from value: {:?}", value)
+            ),
+        }
     }
 }
 
@@ -67,7 +75,6 @@ impl Default for YamlValue {
 }
 
 impl From<&YamlValue> for Value {
-
     fn from(value: &YamlValue) -> Self {
         match value {
             YamlValue::Null => Value::Null,
@@ -169,9 +176,16 @@ impl TryFrom<&YamlValue> for String {
     type Error = ();
 
     fn try_from(value: &YamlValue) -> Result<Self, Self::Error> {
-        let value = serde_yaml::Value::from(value);
-
-        serde_yaml::to_string(&value).map_err(|_| ())
+        match value {
+            YamlValue::Number(value) => Ok(value.to_string()),
+            YamlValue::String(value) => Ok(value.clone()),
+            YamlValue::Bool(value) => Ok(value.to_string()),
+            YamlValue::Mapping(_) => {
+                let serde_mapping = Value::from(value);
+                Ok(serde_yaml::to_string(&serde_mapping).unwrap())
+            }
+            _ => Err(()),
+        }
     }
 }
 
